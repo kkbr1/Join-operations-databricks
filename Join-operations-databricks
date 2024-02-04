@@ -1,0 +1,102 @@
+# Databricks notebook source
+container_name       = "gold"
+storage_account_name = "adlsgen2project1"
+client_id            = dbutils.secrets.get(scope="kv", key="clientid")
+tenant_id            = dbutils.secrets.get(scope="kv", key="tenantid")
+client_secret        = dbutils.secrets.get(scope="kv", key="clientsecret")
+
+# COMMAND ----------
+
+configs = {"fs.azure.account.auth.type": "OAuth",
+	       "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+		   "fs.azure.account.oauth2.client.id": f"{client_id}",
+		   "fs.azure.account.oauth2.client.secret": f"{client_secret}",
+		   "fs.azure.account.oauth2.client.endpoint": f"https://login.microsoftonline.com/{tenant_id}/oauth2/token"}
+
+
+# COMMAND ----------
+
+dbutils.fs.mount(
+    source = f"abfss://{container_name}@{storage_account_name}.dfs.core.windows.net/",
+    mount_point = f"/mnt/{storage_account_name}/{container_name}",
+    extra_configs = configs)
+
+# COMMAND ----------
+
+dbutils.fs.mounts()
+
+# COMMAND ----------
+
+dbutils.secrets.listScopes()
+
+# COMMAND ----------
+
+dbutils.fs.unmount("/mnt/adlsgen2project1/bronze/")
+
+# COMMAND ----------
+
+dbutils.fs.mounts()
+
+# COMMAND ----------
+
+dbutils.fs.ls('/mnt/adlsgen2project1/bronze/process in')
+
+# COMMAND ----------
+
+customers = spark.read.format("csv").option('header',True).load("/mnt/adlsgen2project1/bronze/process in/customers.csv")
+discounts = spark.read.format("csv").option('header',True).load("/mnt/adlsgen2project1/bronze/process in/discounts.csv")
+inventory = spark.read.format("csv").option('header',True).load("/mnt/adlsgen2project1/bronze/process in/inventory.csv")
+orderitems = spark.read.format("csv").option('header',True).load("/mnt/adlsgen2project1/bronze/process in/orderitems.csv")
+orders = spark.read.format("csv").option('header',True).load("/mnt/adlsgen2project1/bronze/process in/orders.csv")
+payments = spark.read.format("csv").option('header',True).load("/mnt/adlsgen2project1/bronze/process in/payments.csv")
+stores = spark.read.format("csv").option('header',True).load("/mnt/adlsgen2project1/bronze/process in/stores.csv")
+
+# COMMAND ----------
+
+display(orderitems)
+display(payments)
+
+# COMMAND ----------
+
+# Perform left join
+left_join_result = orders.join(orderitems, "OrderID", "left")
+display(left_join_result);
+
+# COMMAND ----------
+
+# Perform right join
+right_join_result = orders.join(orderitems, "OrderID", "right")
+display(right_join_result)
+
+# COMMAND ----------
+
+# Perform inner join
+inner_join_result = payments.join(orderitems, "OrderID", "inner")
+display(inner_join_result)
+
+# COMMAND ----------
+
+# Perform full join
+full_join_result = orderitems.join(payments, "OrderID", "outer")
+display(full_join_result)
+
+# COMMAND ----------
+
+dbutils.fs.ls('/mnt/adlsgen2project1/silver/')
+
+# COMMAND ----------
+
+inner_join_result.repartition(1).write.mode("overwrite").parquet("/mnt/adlsgen2project1/silver/innerjoin/")
+full_join_result.coalesce(1).write.mode("overwrite").parquet("/mnt/adlsgen2project1/silver/fulljoin")
+right_join_result.coalesce(1).write.mode("overwrite").parquet("/mnt/adlsgen2project1/silver/rightjoin")
+left_join_result.coalesce(1).write.mode("overwrite").parquet("/mnt/adlsgen2project1/silver/leftjoin")
+
+
+
+# COMMAND ----------
+
+dbutils.fs.ls('/mnt/adlsgen2project1/silver/innerjoin/')
+
+# COMMAND ----------
+
+display(df)
